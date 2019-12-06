@@ -992,6 +992,17 @@ def int_experimental_vector_reduce_fmin : Intrinsic<[llvm_anyfloat_ty],
 
 def int_ssa_copy : Intrinsic<[llvm_any_ty], [LLVMMatchType<0>],
                              [IntrNoMem, Returned<0>]>;
+//Redefine
+def int_writecm: Intrinsic <[], [llvm_i32_ty, llvm_i32_ty], []>;
+def int_writecmp: Intrinsic <[], [llvm_i32_ty, llvm_i32_ty], []>;
+def int_sync: Intrinsic <[], [llvm_i32_ty, llvm_i32_ty], []>;
+def int_fdelete : Intrinsic <[], [llvm_i32_ty], []>;
+def int_falloc : Intrinsic <[llvm_i32_ty], [llvm_i32_ty], []>;
+def int_rfalloc: Intrinsic <[llvm_i32_ty], [llvm_i32_ty, llvm_i32_ty], []>;
+def int_createinst: Intrinsic <[llvm_i32_ty], [llvm_anyptr_ty], []>;
+def int_fbind: Intrinsic <[], [llvm_anyptr_ty,llvm_i32_ty], []>;
+def int_end: Intrinsic <[], [llvm_i32_ty], []>;
+
 //===----------------------------------------------------------------------===//
 // Target-specific intrinsics
 //===----------------------------------------------------------------------===//

@@ -755,3 +755,31 @@ CallInst *IRBuilderBase::CreateIntrinsic(Intrinsic::ID ID,
   Function *Fn = Intrinsic::getDeclaration(M, ID, { Args.front()->getType() });
   return createCallHelper(Fn, Args, this, Name, FMFSource);
 }
+// Redefine
+CallInst *IRBuilderBase::CreateInst(Value *addr, unsigned addrAlign) {
+  assert(
+      (addrAlign == 0 || isPowerOf2_32(addrAlign))
+          && "Must be 0 or a power of 2");
+  addr = getCastedInt8PtrValue(addr);
+  Value *Ops[] = { addr };
+  Type *Tys[] = { addr->getType() };
+  Module *M = BB->getParent()->getParent();
+  Value *TheFn = Intrinsic::getDeclaration(M, Intrinsic::createinst, Tys);
+  CallInst *CI = createCallHelper(TheFn, Ops, this);
+  return CI;
+}
+
+CallInst *IRBuilderBase::CreateFBind(Value *arg0,
+    unsigned arg1Align,Value *arg1) {
+  assert(
+      (arg1Align == 0 || isPowerOf2_32(arg1Align))
+          && "Must be 0 or a power of 2");
+  arg0 = getCastedInt8PtrValue(arg0);
+  Value *Ops[] = { arg0, arg1 };
+  Type *Tys[] = { arg0->getType()};
+  Module *M = BB->getParent()->getParent();
+  Value *TheFn = Intrinsic::getDeclaration(M, Intrinsic::fbind, Tys);
+  CallInst *CI = createCallHelper(TheFn, Ops, this);
+
+  return CI;
+}

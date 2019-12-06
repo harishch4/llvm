@@ -787,7 +787,146 @@ def ADJCALLSTACKDOWN : Pseudo<(outs), (ins i32imm:$amt1, i32imm:$amt2),
 def ADJCALLSTACKUP   : Pseudo<(outs), (ins i32imm:$amt1, i32imm:$amt2),
                               [(CallSeqEnd timm:$amt1, timm:$amt2)]>;
 } // Defs = [X2], Uses = [X2]
-
+// Redefine
+def End : RVInst<(outs), 
+ 		(ins GPR:$rs1),
+ 	    "end","$rs1",
+ 	    [(int_end i32:$rs1)],InstFormatR> {
+   RISCVOpcode opcode = OPC_XRENE;
+   bits<3> funct3 = 0b000;
+   bits<5> rs1;
+ 
+   let Inst{31-25} = 0b0000000;
+   let Inst{24-20} = 0b00000;
+   let Inst{19-15} = rs1;
+   let Inst{14-12} = funct3;
+   let Inst{11-7} = 0b00000;
+   let Opcode = opcode.Value;
+}
+def CreateInst : RVInst<(outs GPR:$rd), 
+ 		(ins GPR:$rs1),
+ 	    "createinst","$rd,\t$rs1",
+ 	    [(set i32:$rd ,(int_createinst i32:$rs1))],InstFormatR> {
+   RISCVOpcode opcode = OPC_XRENE;
+   bits<3> funct3 = 0b000;
+   bits<5> rs1;
+   bits<5> rd;
+   let Inst{31-25} = 0b0000001;
+   let Inst{24-20} = 0b00000;
+   let Inst{19-15} = rs1;
+   let Inst{14-12} = funct3;
+   let Inst{11-7} = rd;
+   let Opcode = opcode.Value;
+}
+def FAlloc : RVInst<(outs GPR:$rd), 
+ 		(ins GPR:$rs1),
+ 	    "falloc","$rd,\t$rs1",
+ 	    [(set i32:$rd, (int_falloc i32:$rs1))],InstFormatR> {
+ 	    
+   RISCVOpcode opcode = OPC_XRENE;
+   bits<3> funct3 = 0b000;
+   bits<5> rs1;
+   bits<5> rd;
+ 
+   let Inst{31-25} = 0b0000010;
+   let Inst{24-20} = 0b00000;
+   let Inst{19-15} = rs1;
+   let Inst{14-12} = funct3;
+   let Inst{11-7} = rd;
+   let Opcode = opcode.Value;
+}
+def RFAlloc : RVInst<(outs GPR:$rd), 
+ 		(ins GPR:$rs1, GPR:$rs2),
+ 	    "rfalloc","$rd,\t$rs1,\t$rs2",
+ 	    [(set i32:$rd, (int_rfalloc i32:$rs1,i32:$rs2))],InstFormatR> {
+   RISCVOpcode opcode = OPC_XRENE;
+   bits<3> funct3 = 0b000;
+   bits<5> rs1;
+   bits<5> rs2;
+   bits<5> rd;
+   let Inst{31-25} = 0b0000011;
+   let Inst{24-20} = rs2;
+   let Inst{19-15} = rs1;
+   let Inst{14-12} = funct3;
+   let Inst{11-7} = rd;
+   let Opcode = opcode.Value;
+}
+def FBind : RVInst<(outs), 
+ 		(ins GPR:$rs1,GPR:$rs2),
+ 	    "fbind","$rs2,\t$rs1",
+ 	    [(int_fbind i32:$rs1,i32:$rs2)],InstFormatR> {
+   RISCVOpcode opcode = OPC_XRENE;
+   bits<3> funct3 = 0b000;
+   bits<5> rs1;
+   bits<5> rs2;
+   let Inst{31-25} = 0b0000100;
+   let Inst{24-20} = rs2;
+   let Inst{19-15} = rs1;
+   let Inst{14-12} = funct3;
+   let Inst{11-7} = 0b00000;
+   let Opcode = opcode.Value;
+}
+def FDelete : RVInst<(outs), 
+ 		(ins GPR:$rs1),
+ 	    "fdelete","$rs1",
+ 	    [(int_fdelete i32:$rs1)],InstFormatR> {
+   RISCVOpcode opcode = OPC_XRENE;
+   bits<3> funct3 = 0b000;
+   bits<5> rs1;
+   let Inst{31-25} = 0b0000101;
+   let Inst{24-20} = 0b00000;
+   let Inst{19-15} = rs1;
+   let Inst{14-12} = funct3;
+   let Inst{11-7} = 0b00000;
+   let Opcode = opcode.Value;
+}
+def WRITECMP : RVInst<(outs), 
+ 		(ins GPR:$rs1, GPR:$rs2),
+ 	    "writecmp","$rs1,\t$rs2",
+ 	    [(int_writecmp i32:$rs1, i32:$rs2)],InstFormatR> {
+   RISCVOpcode opcode = OPC_XRENE;
+   bits<3> funct3 = 0b000;
+   bits<5> rs2;
+   bits<5> rs1;
+   let Inst{31-25} = 0b0000110;
+   let Inst{24-20} = rs2;
+   let Inst{19-15} = rs1;
+   let Inst{14-12} = funct3;
+   let Inst{11-7} = 0b00000;
+   let Opcode = opcode.Value;
+}
+def WRITECM : RVInst<(outs), 
+ 		(ins GPR:$rs1, GPR:$rs2),
+ 	    "writecm","$rs2,\t0(${rs1})",
+ 	    [(int_writecm i32:$rs1, i32:$rs2)],InstFormatS> {
+   RISCVOpcode opcode = OPC_XRENE;
+   bits<3> funct3 = 0b001;
+   bits<12> imm12=0;
+   bits<5> rs2;
+   bits<5> rs1;
+   let Inst{31-25} = imm12{11-5};
+   let Inst{24-20} = rs2;
+   let Inst{19-15} = rs1;
+   let Inst{14-12} = funct3;
+   let Inst{11-7} = imm12{4-0};
+   let Opcode = opcode.Value;
+}
+def Sync : RVInst<(outs), 
+ 		(ins GPR:$rs1, GPR:$rs2),
+ 	    "sync","$rs2,\t0(${rs1})",
+ 	    [(int_sync i32:$rs1, i32:$rs2)],InstFormatS> {
+   RISCVOpcode opcode = OPC_XRENE;
+   bits<3> funct3 = 0b010;
+   bits<12> imm12=0;
+   bits<5> rs2;
+   bits<5> rs1;
+   let Inst{31-25} = imm12{11-5};
+   let Inst{24-20} = rs2;
+   let Inst{19-15} = rs1;
+   let Inst{14-12} = funct3;
+   let Inst{11-7} = imm12{4-0};
+   let Opcode = opcode.Value;
+}
 //===----------------------------------------------------------------------===//
 // Standard extensions
 //===----------------------------------------------------------------------===//

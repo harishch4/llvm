@@ -30,11 +30,11 @@ class StringRef;
 
 class RISCVSubtarget : public RISCVGenSubtargetInfo {
   virtual void anchor();
-  bool HasStdExtM = false;
-  bool HasStdExtA = false;
-  bool HasStdExtF = false;
-  bool HasStdExtD = false;
-  bool HasStdExtC = false;
+  bool HasStdExtM = true;
+  bool HasStdExtA = true;
+  bool HasStdExtF = true;
+  bool HasStdExtD = true;
+  bool HasStdExtC = true;
   bool HasRV64 = false;
   bool EnableLinkerRelax = false;
   unsigned XLen = 32;

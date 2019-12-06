@@ -702,7 +702,9 @@ public:
   CallInst *CreateMaxNum(Value *LHS, Value *RHS, const Twine &Name = "") {
     return CreateBinaryIntrinsic(Intrinsic::maxnum, LHS, RHS, Name);
   }
-
+  // Redefine
+  CallInst *CreateInst(Value *addr, unsigned addrAlign);
+  CallInst *CreateFBind(Value *arg0, unsigned arg1Align,Value *arg1);
 private:
   /// Create a call to a masked intrinsic with given Id.
   CallInst *CreateMaskedIntrinsic(Intrinsic::ID Id, ArrayRef<Value *> Ops,
