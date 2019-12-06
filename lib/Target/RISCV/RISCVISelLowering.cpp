@@ -653,6 +653,10 @@ static const MCPhysReg ArgGPRs[] = {
   RISCV::X10, RISCV::X11, RISCV::X12, RISCV::X13,
   RISCV::X14, RISCV::X15, RISCV::X16, RISCV::X17
 };
+static const MCPhysReg HyperOPArgGPRs[] = {
+  RISCV::X10, RISCV::X11, RISCV::X12, RISCV::X13,
+  RISCV::X14, RISCV::X15, RISCV::X16, RISCV::X17, RISCV::X18,RISCV::X19,RISCV::X20,RISCV::X21,RISCV::X22,RISCV::X23,RISCV::X24,RISCV::X25,RISCV::X26
+};
 
 // Pass a 2*XLEN argument that has been split into two XLEN values through
 // registers or the stack as necessary.
@@ -814,6 +818,164 @@ static bool CC_RISCV(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
   return false;
 }
 
+// Implements the RISC-V calling convention for REDEFINE. Returns true upon failure.
+
+static bool CC_RISCVAssign2XLen_HYPEROP(unsigned XLen, CCState &State, CCValAssign VA1,
+                                ISD::ArgFlagsTy ArgFlags1, unsigned ValNo2,
+                                MVT ValVT2, MVT LocVT2,
+                                ISD::ArgFlagsTy ArgFlags2) {
+  unsigned XLenInBytes = XLen / 8;
+  if (unsigned Reg = State.AllocateReg(HyperOPArgGPRs)) {
+    // At least one half can be passed via register.
+    State.addLoc(CCValAssign::getReg(VA1.getValNo(), VA1.getValVT(), Reg,
+                                     VA1.getLocVT(), CCValAssign::Full));
+  } else {
+    // Both halves must be passed on the stack, with proper alignment.
+    unsigned StackAlign = std::max(XLenInBytes, ArgFlags1.getOrigAlign());
+    State.addLoc(
+        CCValAssign::getMem(VA1.getValNo(), VA1.getValVT(),
+                            State.AllocateStack(XLenInBytes, StackAlign),
+                            VA1.getLocVT(), CCValAssign::Full));
+    State.addLoc(CCValAssign::getMem(
+        ValNo2, ValVT2, State.AllocateStack(XLenInBytes, XLenInBytes), LocVT2,
+        CCValAssign::Full));
+    return false;
+  }
+
+  if (unsigned Reg = State.AllocateReg(HyperOPArgGPRs)) {
+    // The second half can also be passed via register.
+    State.addLoc(
+        CCValAssign::getReg(ValNo2, ValVT2, Reg, LocVT2, CCValAssign::Full));
+  } else {
+    // The second half is passed via the stack, without additional alignment.
+    State.addLoc(CCValAssign::getMem(
+        ValNo2, ValVT2, State.AllocateStack(XLenInBytes, XLenInBytes), LocVT2,
+        CCValAssign::Full));
+  }
+
+  return false;
+}
+
+static bool CC_RISCV_HYPEROP(const DataLayout &DL, unsigned ValNo, MVT ValVT, MVT LocVT,
+                     CCValAssign::LocInfo LocInfo, ISD::ArgFlagsTy ArgFlags,
+                     CCState &State, bool IsFixed, bool IsRet, Type *OrigTy) {
+  unsigned XLen = DL.getLargestLegalIntTypeSizeInBits();
+  assert(XLen == 32 || XLen == 64);
+  MVT XLenVT = XLen == 32 ? MVT::i32 : MVT::i64;
+  if (ValVT == MVT::f32) {
+    LocVT = MVT::i32;
+    LocInfo = CCValAssign::BCvt;
+  }
+
+  // Any return value split in to more than two values can't be returned
+  // directly.
+  if (IsRet && ValNo > 1)
+    return true;
+
+  // If this is a variadic argument, the RISC-V calling convention requires
+  // that it is assigned an 'even' or 'aligned' register if it has 8-byte
+  // alignment (RV32) or 16-byte alignment (RV64). An aligned register should
+  // be used regardless of whether the original argument was split during
+  // legalisation or not. The argument will not be passed by registers if the
+  // original type is larger than 2*XLEN, so the register alignment rule does
+  // not apply.
+  unsigned TwoXLenInBytes = (2 * XLen) / 8;
+  if (!IsFixed && ArgFlags.getOrigAlign() == TwoXLenInBytes &&
+      DL.getTypeAllocSize(OrigTy) == TwoXLenInBytes) {
+    unsigned RegIdx = State.getFirstUnallocated(HyperOPArgGPRs);
+    // Skip 'odd' register if necessary.
+    if (RegIdx != array_lengthof(HyperOPArgGPRs) && RegIdx % 2 == 1)
+      State.AllocateReg(HyperOPArgGPRs);
+  }
+
+  SmallVectorImpl<CCValAssign> &PendingLocs = State.getPendingLocs();
+  SmallVectorImpl<ISD::ArgFlagsTy> &PendingArgFlags =
+      State.getPendingArgFlags();
+
+  assert(PendingLocs.size() == PendingArgFlags.size() &&
+         "PendingLocs and PendingArgFlags out of sync");
+
+  // Handle passing f64 on RV32D with a soft float ABI.
+  if (XLen == 32 && ValVT == MVT::f64) {
+    assert(!ArgFlags.isSplit() && PendingLocs.empty() &&
+           "Can't lower f64 if it is split");
+    // Depending on available argument GPRS, f64 may be passed in a pair of
+    // GPRs, split between a GPR and the stack, or passed completely on the
+    // stack. LowerCall/LowerFormalArguments/LowerReturn must recognise these
+    // cases.
+    unsigned Reg = State.AllocateReg(HyperOPArgGPRs);
+    LocVT = MVT::i32;
+    if (!Reg) {
+      unsigned StackOffset = State.AllocateStack(8, 8);
+      State.addLoc(
+          CCValAssign::getMem(ValNo, ValVT, StackOffset, LocVT, LocInfo));
+      return false;
+    }
+    if (!State.AllocateReg(HyperOPArgGPRs))
+      State.AllocateStack(4, 4);
+    State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
+    return false;
+  }
+
+  // Split arguments might be passed indirectly, so keep track of the pending
+  // values.
+  if (ArgFlags.isSplit() || !PendingLocs.empty()) {
+    LocVT = XLenVT;
+    LocInfo = CCValAssign::Indirect;
+    PendingLocs.push_back(
+        CCValAssign::getPending(ValNo, ValVT, LocVT, LocInfo));
+    PendingArgFlags.push_back(ArgFlags);
+    if (!ArgFlags.isSplitEnd()) {
+      return false;
+    }
+  }
+
+  // If the split argument only had two elements, it should be passed directly
+  // in registers or on the stack.
+  if (ArgFlags.isSplitEnd() && PendingLocs.size() <= 2) {
+    assert(PendingLocs.size() == 2 && "Unexpected PendingLocs.size()");
+    // Apply the normal calling convention rules to the first half of the
+    // split argument.
+    CCValAssign VA = PendingLocs[0];
+    ISD::ArgFlagsTy AF = PendingArgFlags[0];
+    PendingLocs.clear();
+    PendingArgFlags.clear();
+    return CC_RISCVAssign2XLen_HYPEROP(XLen, State, VA, AF, ValNo, ValVT, LocVT,
+                               ArgFlags);
+  }
+
+  // Allocate to a register if possible, or else a stack slot.
+  unsigned Reg = State.AllocateReg(HyperOPArgGPRs);
+  unsigned StackOffset = Reg ? 0 : State.AllocateStack(XLen / 8, XLen / 8);
+
+  // If we reach this point and PendingLocs is non-empty, we must be at the
+  // end of a split argument that must be passed indirectly.
+  if (!PendingLocs.empty()) {
+    assert(ArgFlags.isSplitEnd() && "Expected ArgFlags.isSplitEnd()");
+    assert(PendingLocs.size() > 2 && "Unexpected PendingLocs.size()");
+    LLVM_DEBUG(dbgs() << "redefine : Inside reg alloc "<< '\n');
+    for (auto &It : PendingLocs) {
+      if (Reg)
+        It.convertToReg(Reg);
+      else
+        It.convertToMem(StackOffset);
+      State.addLoc(It);
+    }
+    PendingLocs.clear();
+    PendingArgFlags.clear();
+    return false;
+  }
+
+  assert(LocVT == XLenVT && "Expected an XLenVT at this stage");
+
+  if (Reg) {
+    State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
+  } else {
+    State.addLoc(
+        CCValAssign::getMem(ValNo, ValVT, StackOffset, LocVT, LocInfo));
+  }
+  return false;
+}
 void RISCVTargetLowering::analyzeInputArgs(
     MachineFunction &MF, CCState &CCInfo,
     const SmallVectorImpl<ISD::InputArg> &Ins, bool IsRet) const {
@@ -829,12 +991,24 @@ void RISCVTargetLowering::analyzeInputArgs(
       ArgTy = FType->getReturnType();
     else if (Ins[i].isOrigArg())
       ArgTy = FType->getParamType(Ins[i].getOrigArgIndex());
+    
+    if (MF.getFunction().getSection().equals(".HYPEROP")) {
 
-    if (CC_RISCV(MF.getDataLayout(), i, ArgVT, ArgVT, CCValAssign::Full,
-                 ArgFlags, CCInfo, /*IsRet=*/true, IsRet, ArgTy)) {
-      LLVM_DEBUG(dbgs() << "InputArg #" << i << " has unhandled type "
-                        << EVT(ArgVT).getEVTString() << '\n');
-      llvm_unreachable(nullptr);
+      if (CC_RISCV_HYPEROP(MF.getDataLayout(), i, ArgVT, ArgVT, CCValAssign::Full,
+          ArgFlags, CCInfo, /*IsRet=*/true, IsRet, ArgTy)) {
+        LLVM_DEBUG(
+            dbgs() << "InputArg #" << i << " has unhandled type "
+                << EVT(ArgVT).getEVTString() << '\n');
+        llvm_unreachable(nullptr);
+      }
+    } else {
+      if (CC_RISCV(MF.getDataLayout(), i, ArgVT, ArgVT, CCValAssign::Full,
+          ArgFlags, CCInfo, /*IsRet=*/true, IsRet, ArgTy)) {
+        LLVM_DEBUG(
+            dbgs() << "InputArg #" << i << " has unhandled type "
+                << EVT(ArgVT).getEVTString() << '\n');
+        llvm_unreachable(nullptr);
+      }
     }
   }
 }
